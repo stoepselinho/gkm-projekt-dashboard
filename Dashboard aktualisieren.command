@@ -4,8 +4,8 @@
 cd "$(dirname "$0")"
 
 # Prüfen ob Änderungen vorhanden
-if git diff --quiet dashboard.html && git diff --cached --quiet dashboard.html; then
-  osascript -e 'display dialog "Keine Änderungen an dashboard.html gefunden — nichts zu speichern." buttons {"OK"} default button "OK" with title "Dashboard aktualisieren"'
+if git diff --quiet index.html && git diff --cached --quiet index.html; then
+  osascript -e 'display dialog "Keine Änderungen an index.html gefunden — nichts zu speichern." buttons {"OK"} default button "OK" with title "Dashboard aktualisieren"'
   exit 0
 fi
 
@@ -38,7 +38,7 @@ if [ "$RESULT" = "CANCELLED" ] || [ -z "$RESULT" ]; then
 fi
 
 # Git: hinzufügen, committen, pushen, taggen
-git add dashboard.html
+git add index.html
 
 git commit -m "${NEXT_VERSION} — ${RESULT}" --quiet
 
