@@ -122,6 +122,27 @@
     .new-badge{display:inline-flex;align-items:center;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;background:var(--active-bg);color:var(--active);text-transform:uppercase;letter-spacing:0.04em;vertical-align:middle;margin-left:4px;}
 
     .card-todos{border-top:1px solid var(--border);padding:12px 16px;}
+
+    /* Projektprotokoll */
+    .card-log{border-top:1px solid var(--border);}
+    .log-header{display:flex;align-items:center;gap:8px;padding:10px 16px;cursor:pointer;user-select:none;transition:background 0.15s;}
+    .log-header:hover{background:var(--surface2);}
+    .log-section-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);flex:1;}
+    .log-count{font-size:11px;color:var(--text-dim);background:var(--surface2);padding:1px 7px;border-radius:10px;}
+    .log-chevron{font-size:10px;color:var(--text-dim);transition:transform 0.2s;}
+    .log-chevron.open{transform:rotate(180deg);}
+    .log-body{padding:0 16px 12px;}
+    .log-entries{display:flex;flex-direction:column;gap:8px;margin-bottom:8px;}
+    .log-entry{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;}
+    .log-entry-header{display:flex;align-items:center;gap:8px;margin-bottom:5px;}
+    .log-entry-author{font-size:12px;font-weight:600;color:var(--text);}
+    .log-entry-date{font-size:11px;color:var(--text-muted);flex:1;}
+    .log-entry-text{font-size:13px;color:var(--text);white-space:pre-wrap;line-height:1.5;}
+    .log-entry .icon-btn{opacity:0;transition:opacity 0.15s;}
+    .log-entry:hover .icon-btn{opacity:1;}
+    .log-add-form{display:flex;flex-direction:column;gap:6px;margin-bottom:8px;}
+    .log-form-row{display:flex;gap:6px;justify-content:space-between;align-items:center;}
+    .log-empty{font-size:12px;color:var(--text-dim);padding:4px 0 8px;}
     .todos-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
     .todos-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);}
     .todo-list{list-style:none;}
@@ -576,6 +597,22 @@ function sendReviewEmail(note){
   body+='\nOffene Aufgaben:\n\n';
   if(open.length===0){body+='Keine offenen Aufgaben.\n';}
   else{open.forEach(({p,todos})=>{body+='['+p.status+']'+(p.priority?' ['+p.priority+']':'')+' '+(p.customer?p.customer+' — ':'')+p.name+(p.owner?' (Verantw.: '+p.owner+')':'')+' \n';todos.forEach(t=>{let l='  ☐ '+t.text;if(t.person)l+=' → '+t.person;if(t.deadline){const lb=dlLabel(t.deadline);l+=' | Fällig: '+fmtDate(t.deadline)+(lb.cls==='overdue'?' ⚠ ÜBERFÄLLIG':'');}body+=l+'\n';});body+='\n';});}
+  // Neue Protokolleinträge seit letztem Review
+  const lr=localStorage.getItem('pd_last_review');
+  const recentLog=[];
+  projects.filter(p=>!p.archived).forEach(p=>{
+    (p.log||[]).forEach(e=>{
+      if(!lr||new Date(e.createdAt)>new Date(lr)){
+        recentLog.push({project:p.name,customer:p.customer,author:e.author,date:fmtDate(e.date),text:e.text});
+      }
+    });
+  });
+  if(recentLog.length>0){
+    body+='\nNeue Protokolleinträge:\n\n';
+    recentLog.forEach(e=>{
+      body+=`${e.date}${e.author?' · '+e.author:''} — ${e.customer?e.customer+' / ':''}${e.project}\n${e.text}\n\n`;
+    });
+  }
   body+='--\nProjekt-Dashboard';
   const subj=encodeURIComponent('Wochenreview '+dateStr+' — Offene Aufgaben');
   const href='mailto:'+EMAIL_VERTEILER.join(',')+'?subject='+subj+'&body='+encodeURIComponent(body);
@@ -691,6 +728,50 @@ function renderCard(p){
         </div>
       </div>
     </div>
+    ${renderLogSection(p)}
+  </div>`;
+}
+
+function renderLogSection(p){
+  const log=(p.log||[]).slice().reverse();
+  const n=p.log?p.log.length:0;
+  const isOpen=document.getElementById('log-body-'+p.id)?.style.display!=='none';
+  const chevron=isOpen?'open':'';
+  const entriesHtml=log.length===0
+    ?'<div class="log-empty">Noch keine Einträge.</div>'
+    :log.map(e=>{
+      const nb=isNew(e.createdAt)?'<span class="new-badge">Neu</span>':'';
+      return `<div class="log-entry">
+        <div class="log-entry-header">
+          <span class="log-entry-author">${esc(e.author||'—')}</span>
+          ${nb}
+          <span class="log-entry-date">${fmtDate(e.date)||e.date||''}</span>
+          <button class="icon-btn danger" onclick="deleteLogEntry('${p.id}','${e.id}')">✕</button>
+        </div>
+        <div class="log-entry-text">${esc(e.text)}</div>
+      </div>`;
+    }).join('');
+  const authorOpts=TEAM.map(n=>`<option value="${n}">${n}</option>`).join('');
+  return `<div class="card-log">
+    <div class="log-header" onclick="toggleLog('${p.id}')">
+      <span class="log-section-title">Protokoll</span>
+      <span class="log-count">${n}</span>
+      <span class="log-chevron ${chevron}" id="log-chev-${p.id}">▼</span>
+    </div>
+    <div class="log-body" id="log-body-${p.id}" style="display:${isOpen?'block':'none'}">
+      <div class="log-entries" id="log-entries-${p.id}">${entriesHtml}</div>
+      <div class="log-add-form" id="log-form-${p.id}" style="display:none">
+        <textarea class="input input-full" id="log-text-${p.id}" placeholder="Notiz eingeben..." rows="3"></textarea>
+        <div class="log-form-row">
+          <select class="input" style="font-size:12px;flex:1" id="log-author-${p.id}">
+            <option value="">Person wählen</option>${authorOpts}
+          </select>
+          <button class="btn btn-ghost btn-sm" onclick="cancelLogEntry('${p.id}')">Abbrechen</button>
+          <button class="btn btn-primary btn-sm" onclick="addLogEntry('${p.id}')">Hinzufügen</button>
+        </div>
+      </div>
+      <button class="btn btn-ghost btn-sm" id="log-add-btn-${p.id}" onclick="toggleLogForm('${p.id}')">+ Notiz hinzufügen</button>
+    </div>
   </div>`;
 }
 
@@ -741,6 +822,80 @@ function renderArchive(){
 function toggleArchive(){archiveOpen=!archiveOpen;renderArchive();}
 function archiveProject(id){const p=projects.find(x=>x.id===id);if(!p||!confirm('"'+p.name+'" archivieren?'))return;p.archived=true;save();render();}
 function unarchiveProject(id){const p=projects.find(x=>x.id===id);if(!p)return;p.archived=false;save();render();}
+
+// ── Protokoll ─────────────────────────────────────────────────
+function toggleLog(pid){
+  const body=document.getElementById('log-body-'+pid);
+  const chev=document.getElementById('log-chev-'+pid);
+  if(!body)return;
+  const open=body.style.display==='none';
+  body.style.display=open?'block':'none';
+  if(chev)chev.className='log-chevron'+(open?' open':'');
+}
+
+function toggleLogForm(pid){
+  const form=document.getElementById('log-form-'+pid);
+  const btn=document.getElementById('log-add-btn-'+pid);
+  if(!form)return;
+  const open=form.style.display==='none';
+  form.style.display=open?'flex':'none';
+  if(btn)btn.style.display=open?'none':'';
+  if(open)document.getElementById('log-text-'+pid)?.focus();
+}
+
+function cancelLogEntry(pid){
+  const form=document.getElementById('log-form-'+pid);
+  const btn=document.getElementById('log-add-btn-'+pid);
+  if(form)form.style.display='none';
+  if(btn)btn.style.display='';
+  const ta=document.getElementById('log-text-'+pid);
+  if(ta)ta.value='';
+}
+
+function addLogEntry(pid){
+  const ta=document.getElementById('log-text-'+pid);
+  const sel=document.getElementById('log-author-'+pid);
+  const text=(ta?.value||'').trim();
+  if(!text)return;
+  const p=projects.find(x=>x.id===pid);
+  if(!p)return;
+  if(!p.log)p.log=[];
+  const today=new Date();
+  const dateStr=today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
+  p.log.push({id:uid(),text,author:sel?.value||'',date:dateStr,createdAt:new Date().toISOString()});
+  save();
+  renderCardInPlace(p);
+  // Log-Body nach Re-Render wieder öffnen
+  const body=document.getElementById('log-body-'+pid);
+  const chev=document.getElementById('log-chev-'+pid);
+  if(body){body.style.display='block';}
+  if(chev){chev.className='log-chevron open';}
+}
+
+function deleteLogEntry(pid,lid){
+  const p=projects.find(x=>x.id===pid);
+  if(!p)return;
+  p.log=(p.log||[]).filter(e=>e.id!==lid);
+  save();
+  // Nur Einträge neu rendern, nicht die ganze Karte
+  const container=document.getElementById('log-entries-'+pid);
+  if(!container){renderCardInPlace(p);return;}
+  const log=(p.log||[]).slice().reverse();
+  container.innerHTML=log.length===0
+    ?'<div class="log-empty">Noch keine Einträge.</div>'
+    :log.map(e=>`<div class="log-entry">
+      <div class="log-entry-header">
+        <span class="log-entry-author">${esc(e.author||'—')}</span>
+        ${isNew(e.createdAt)?'<span class="new-badge">Neu</span>':''}
+        <span class="log-entry-date">${fmtDate(e.date)||e.date||''}</span>
+        <button class="icon-btn danger" onclick="deleteLogEntry('${pid}','${e.id}')">✕</button>
+      </div>
+      <div class="log-entry-text">${esc(e.text)}</div>
+    </div>`).join('');
+  // Zähler aktualisieren
+  const countEl=document.querySelector('#card-'+pid+' .log-count');
+  if(countEl)countEl.textContent=p.log.length;
+}
 
 function render(){updateStats();renderPersonFilter();renderProjects();renderArchive();renderDeadlines();}
 
